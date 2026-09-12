@@ -43,7 +43,9 @@ export function createAttemptClient({
   let artifact = null;
   let deadlineMs = null;
   let clockOffsetMs = 0;
-  let context = null;
+  let attemptId = null;
+  let testId = null;
+  let awayTimeApproximate = false;
   let refusal = null;
   let submissionId = null;
   const answers = {};
@@ -57,8 +59,12 @@ export function createAttemptClient({
   /** Server time as best we can estimate it locally. */
   const serverNow = () => clock() + clockOffsetMs;
 
-  async function start({ identityKey, testId, blockId, accessCode }) {
-    const response = await endpoint.startAttempt({ identityKey, testId, blockId, accessCode });
+  /**
+   * Sends only what the student typed. The server decides which test the code opens,
+   * which roster row the name is, and when the attempt started.
+   */
+  async function start({ accessCode, firstName, lastName, grade, email }) {
+    const response = await endpoint.startAttempt({ accessCode, firstName, lastName, grade, email });
     if (!response.ok) {
       state = ATTEMPT_STATES.REFUSED;
       refusal = response.reason;
@@ -68,10 +74,16 @@ export function createAttemptClient({
     clockOffsetMs = response.serverNowMs - clock();
     artifact = response.artifact;
     deadlineMs = response.deadlineMs;
-    context = { identityKey, testId, blockId };
+    attemptId = response.attemptId;
+    testId = response.testId;
     submissionId = newSubmissionId();
-    attemptStartClientMs = response.firstDeliveryMs - clockOffsetMs;
-    activity.persistTo(storage, `scioly.activity.${testId}.${identityKey}`, {
+    // Away time is informational and must never stop a student starting. If the server
+    // ever omits firstDeliveryMs, measure from now and mark the figure approximate.
+    const firstDeliveryMs = Number.isFinite(response.firstDeliveryMs) ? response.firstDeliveryMs : response.serverNowMs;
+    awayTimeApproximate = !Number.isFinite(response.firstDeliveryMs);
+    attemptStartClientMs = firstDeliveryMs - clockOffsetMs;
+    // Keyed by attempt: a resume returns the same attemptId, so the earlier page's log is found.
+    activity.persistTo(storage, `scioly.activity.${attemptId}`, {
       resumed: response.decision === 'resumed',
       reopenedAtMs: pageOpenedAtMs
     });
@@ -111,19 +123,19 @@ export function createAttemptClient({
   function awayTime() {
     if (attemptStartClientMs === null) return computeAwayTime([], { startMs: 0, endMs: 0 });
     const endMs = endedAtClientMs ?? Math.min(clock(), deadlineMs - clockOffsetMs);
-    return computeAwayTime(activity.events, { startMs: attemptStartClientMs, endMs });
+    return { ...computeAwayTime(activity.events, { startMs: attemptStartClientMs, endMs }), approximate: awayTimeApproximate };
   }
 
   function buildPayload({ auto }) {
+    // Exactly the submit contract. Away time is not sent: the server recomputes it from
+    // the raw events rather than trusting the phone's own total.
     return {
-      ...context,
+      attemptId,
       submissionId,
       answers: { ...answers },
       activity: activity.events,
       clientSubmittedAtMs: clock(),
       clientServerNowMs: serverNow(),
-      deadlineMs,
-      away: awayTime(),
       auto
     };
   }
@@ -157,6 +169,8 @@ export function createAttemptClient({
     get artifact() { return artifact; },
     get answers() { return { ...answers }; },
     get deadlineMs() { return deadlineMs; },
+    get attemptId() { return attemptId; },
+    get testId() { return testId; },
     get refusal() { return refusal; },
     get clockOffsetMs() { return clockOffsetMs; }
   };

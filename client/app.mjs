@@ -9,6 +9,8 @@
 
 import { createAttemptClient, ATTEMPT_STATES } from '../src/client/attempt-client.mjs';
 import { createMockEndpoint } from '../src/client/api-contract.mjs';
+import { createHttpEndpoint } from '../src/client/http-endpoint.mjs';
+import { ENDPOINT_URL } from './config.mjs';
 import { createImageLoader, IMAGE_STATES } from '../src/client/image-loader.mjs';
 import { validateIdentityFields, validateEmail, FIELD_PROBLEM } from '../src/client/identity.mjs';
 import { formatAwayDuration } from '../src/client/away-time.mjs';
@@ -46,7 +48,10 @@ const REFUSAL_TEXT = {
   'session-closed': 'This session has closed. Ask your proctor about a makeup time.',
   'late-start-closed': 'It’s too late in the session to start a new test. Ask your proctor.',
   'block-already-used': 'You’ve already taken a test in this time block. Each block allows one test.',
-  'session-cap-reached': 'You’ve already started two tests this session, which is the limit.'
+  'session-cap-reached': 'You’ve already started two tests this session, which is the limit.',
+  'incomplete-identity': 'Check your first name, last name, and grade, then try again.',
+  'test-not-ready': 'This test isn’t ready yet. Tell your proctor.',
+  unreachable: 'Couldn’t reach the test server. Check your Wi-Fi and try again. If it keeps failing, tell your proctor.'
 };
 
 const FIELD_TEXT = {
@@ -81,7 +86,6 @@ async function loadDemoEndpoint() {
     clock: () => Date.now() + offset,
     imageStore
   });
-  endpoint.demoSlug = artifact.slug;
   return endpoint;
 }
 
@@ -329,7 +333,7 @@ function finish(client, artifact) {
   $('done-title').focus();
 }
 
-function beginAttempt({ result, client, endpoint, identity }) {
+function beginAttempt({ result, client, endpoint }) {
   const artifact = result.artifact;
   const totalMs = (artifact.time_limit_minutes ?? 25) * 60_000;
   $('entry').hidden = true;
@@ -338,7 +342,7 @@ function beginAttempt({ result, client, endpoint, identity }) {
   $('clock-event').textContent = artifact.event;
   document.title = `${artifact.event} – Tryout test`;
 
-  const loader = createImageLoader({ endpoint, identityKey: identity, testId: endpoint.demoSlug, images: artifact.images ?? [] });
+  const loader = createImageLoader({ endpoint, attemptId: client.attemptId, images: artifact.images ?? [] });
   let items;
   const onAnswer = () => refreshProgress(artifact, client, items);
   items = renderQuestions(artifact, client, loader, onAnswer);
@@ -404,15 +408,21 @@ function beginAttempt({ result, client, endpoint, identity }) {
 }
 
 async function main() {
-  if (!demo) {
+  // ?demo=1 always means the in-page stand-in, even once a real server is configured, so
+  // the demo can never touch real records.
+  let endpoint;
+  if (demo) {
+    endpoint = await loadDemoEndpoint();
+    $('demo-notice').hidden = false;
+  } else if (ENDPOINT_URL) {
+    endpoint = createHttpEndpoint({ url: ENDPOINT_URL });
+  } else {
     showEntryError('No test server is set up for this page yet. Open it with ?demo=1 to try the demo.');
     $('start-button').disabled = true;
     return;
   }
-  $('demo-notice').hidden = false;
   if (prefilledCode) $('access-code').value = prefilledCode.toUpperCase();
 
-  const endpoint = await loadDemoEndpoint();
   const client = createAttemptClient({ endpoint, storage: window.localStorage });
   client.activity.attach({ documentRef: document, windowRef: window });
 
@@ -449,19 +459,26 @@ async function main() {
     const button = $('start-button');
     button.disabled = true;
     button.textContent = 'Starting…';
-    const result = await client.start({
-      identityKey: identity.canonical, // the real server matches first, last, and grade to the protected roster
-      testId: endpoint.demoSlug,
-      blockId: 1,
-      accessCode: code
-    });
+    let result;
+    try {
+      // Only what the student typed. The server decides the test, the roster match, and the start time.
+      result = await client.start({
+        accessCode: code,
+        firstName: identity.firstName,
+        lastName: identity.lastName,
+        grade: identity.grade,
+        email: email.email
+      });
+    } catch (error) {
+      result = { ok: false, reason: 'unreachable' };
+    }
     button.disabled = false;
     button.textContent = 'Start test';
     if (!result.ok) {
       showEntryError(REFUSAL_TEXT[result.reason] ?? `This test couldn’t start (${result.reason}). Show this screen to your proctor.`);
       return;
     }
-    beginAttempt({ result, client, endpoint, identity: identity.canonical });
+    beginAttempt({ result, client, endpoint });
   });
 }
 

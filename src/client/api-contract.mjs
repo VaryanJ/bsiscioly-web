@@ -12,6 +12,7 @@ import { authorizeExtension, applyExtension } from '../policy/extension.mjs';
 import { authorizeImageFetch } from '../policy/image-policy.mjs';
 import { bytesToBase64 } from './bytes.mjs';
 import { computeAwayTime } from './away-time.mjs';
+import { validateIdentityFields } from './identity.mjs';
 
 /**
  * Fields a student's browser is allowed to receive.
@@ -74,115 +75,155 @@ export function assertNoProtectedFields(value, path = 'artifact') {
 }
 
 /**
- * In-memory stand-in for the eventual Apps Script endpoint.
+ * The wire contract every endpoint speaks: this in-memory stand-in, the HTTP connection to
+ * the deployed server (http-endpoint.mjs), and apps-script/Server.gs.
+ *
+ * It follows the server, because the server is the authority. A student sends only what
+ * they typed; the server decides which test a code opens, which roster row a name is, and
+ * when their time started. test/contract-parity.test.mjs fails if the stand-in and the
+ * real server ever return different fields.
+ *
+ *   start   { accessCode, firstName, lastName, grade, email }
+ *        -> { ok: true, decision, attemptId, testId, event, serverNowMs, firstDeliveryMs, deadlineMs, artifact }
+ *        |  { ok: false, decision: 'refused', reason }
+ *   submit  { attemptId, submissionId, answers, activity, clientSubmittedAtMs, clientServerNowMs, auto }
+ *        -> { ok: true, outcome, receiptId, late, receiptMs }
+ *   images  { attemptId, imageIds }
+ *        -> { ok: true, images } | { ok: false, reason }
+ */
+export const START_RESPONSE_FIELDS = Object.freeze(['ok', 'decision', 'attemptId', 'testId', 'event', 'serverNowMs', 'firstDeliveryMs', 'deadlineMs', 'artifact']);
+export const SUBMIT_RESPONSE_FIELDS = Object.freeze(['ok', 'outcome', 'receiptId', 'late', 'receiptMs']);
+
+/**
+ * In-memory stand-in for the deployed Apps Script endpoint.
  *
  * Holds the protected side (tests with keys, access codes, attempt records) and never
- * returns any of it. `clock` is injected so tests control time exactly.
+ * returns any of it. `clock` is injected so tests control time exactly. `blocks` maps a
+ * test id to its conflict block, which the server reads from the Tests tab.
  */
-export function createMockEndpoint({ config, tests, accessCodes, clock, imageStore = {}, failFor = () => null }) {
+export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, clock, imageStore = {}, failFor = () => null }) {
   const window = resolveSessionWindow(config);
   const attempts = [];
   const submissions = [];
   const extensionLog = [];
+  let nextAttempt = 1;
+  let nextReceipt = 1;
 
-  const findAttempt = (identityKey, testId) =>
-    attempts.find((attempt) => attempt.identityKey === identityKey && attempt.testId === testId);
+  const byAttemptId = (attemptId) => attempts.find((attempt) => attempt.attemptId === attemptId);
+  const testForCode = (code) => {
+    const wanted = String(code ?? '').trim().toUpperCase();
+    return Object.keys(accessCodes).find((testId) => String(accessCodes[testId]).toUpperCase() === wanted) ?? null;
+  };
 
   return {
     window,
     /** Test-only inspection of protected state; never exposed over the wire. */
     _state: () => ({ attempts, submissions, extensionLog }),
 
-    async startAttempt({ identityKey, testId, blockId, accessCode }) {
+    async startAttempt({ accessCode, firstName, lastName, grade }) {
       const forced = failFor('startAttempt');
       if (forced) throw forced;
-
       const nowMs = clock();
+
+      const identity = validateIdentityFields({ firstName, lastName, grade });
+      if (!identity.valid) return { ok: false, decision: START_DECISIONS.REFUSED, reason: 'incomplete-identity' };
+
+      // An unknown code refuses the same way as any other bad code, so it reveals nothing.
+      const testId = testForCode(accessCode);
+      if (!testId) return { ok: false, decision: START_DECISIONS.REFUSED, reason: 'bad-access-code' };
+
       const result = authorizeStart({
         window,
         config,
-        request: { identityKey, testId, blockId, accessCodeValid: accessCodes[testId] === accessCode },
+        request: { identityKey: identity.canonical, testId, blockId: blocks[testId] ?? 1, accessCodeValid: true },
         priorAttempts: attempts,
         nowMs
       });
-
       if (result.decision === START_DECISIONS.REFUSED) {
-        return { ok: false, decision: result.decision, reason: result.reason, serverNowMs: nowMs };
+        return { ok: false, decision: result.decision, reason: result.reason };
       }
-      if (result.decision === START_DECISIONS.AUTHORIZED) attempts.push(result.attempt);
+
+      let attempt = result.attempt;
+      if (result.decision === START_DECISIONS.AUTHORIZED) {
+        attempt = { ...result.attempt, attemptId: `A${nextAttempt++}` };
+        attempts.push(attempt);
+      }
 
       const artifact = toStudentArtifact(tests[testId]);
       assertNoProtectedFields(artifact); // belt and braces: fail loudly rather than leak
       return {
         ok: true,
         decision: result.decision,
+        attemptId: attempt.attemptId,
         testId,
-        artifact,
+        event: tests[testId].event,
         serverNowMs: nowMs,
+        firstDeliveryMs: result.firstDeliveryMs,
         deadlineMs: result.deadlineMs,
-        firstDeliveryMs: result.firstDeliveryMs
+        artifact
       };
     },
 
-    async submitAttempt(submission) {
+    async submitAttempt(payload) {
       const forced = failFor('submitAttempt');
       if (forced) throw forced;
+      if (!payload?.submissionId) throw Object.assign(new Error('rejected-malformed'), { retryable: false });
 
       const nowMs = clock();
-      const attempt = findAttempt(submission.identityKey, submission.testId);
+      const attempt = byAttemptId(payload.attemptId);
+      const submission = { ...payload, testId: attempt?.testId };
       const receipt = authorizeSubmission({
         window, config, attempt, submission,
-        priorSubmissions: submissions.filter((s) => s.identityKey === submission.identityKey),
+        priorSubmissions: submissions.filter((s) => s.attemptId === payload.attemptId),
         nowMs
       });
-      // Away time recomputed from the raw events on the server side, not taken from the
-      // client's own summary. Events carry device-clock times, so convert the attempt window.
-      const offsetMs = (submission.clientServerNowMs ?? nowMs) - (submission.clientSubmittedAtMs ?? nowMs);
+
+      if (receipt.outcome === SUBMISSION_OUTCOMES.REPLAY) {
+        return { ok: true, outcome: receipt.outcome, receiptId: receipt.receiptId, late: receipt.late, receiptMs: receipt.receiptMs };
+      }
+
+      // Away time recomputed here from the raw events, not taken from the phone. Events carry
+      // device-clock times, so convert the attempt window into that clock.
+      const offsetMs = (payload.clientServerNowMs ?? nowMs) - (payload.clientSubmittedAtMs ?? nowMs);
       const away = attempt
-        ? computeAwayTime(submission.activity ?? [], {
+        ? computeAwayTime(payload.activity ?? [], {
           startMs: attempt.firstDeliveryMs - offsetMs,
-          endMs: Math.min(submission.clientSubmittedAtMs ?? nowMs - offsetMs, (receipt.deadlineMs ?? Infinity) - offsetMs)
+          endMs: Math.min(payload.clientSubmittedAtMs ?? nowMs - offsetMs, (receipt.deadlineMs ?? Infinity) - offsetMs)
         })
         : null;
-      const stored = { ...receipt, identityKey: submission.identityKey, answers: submission.answers, activity: submission.activity, away };
-      if (receipt.outcome !== SUBMISSION_OUTCOMES.REPLAY) submissions.push(stored);
+      const receiptId = `R${nextReceipt++}`;
+      submissions.push({ ...receipt, receiptId, attemptId: payload.attemptId, identityKey: attempt?.identityKey, answers: payload.answers, activity: payload.activity, away });
       // A receipt carries status only — never a score, never correctness.
-      return { ok: true, outcome: receipt.outcome, late: receipt.late, receiptMs: receipt.receiptMs, submissionId: receipt.submissionId };
+      return { ok: true, outcome: receipt.outcome, receiptId, late: receipt.late, receiptMs: receipt.receiptMs };
     },
 
-    /** Image bytes for a started attempt on this test only; see image-policy.mjs. */
-    async getImages({ identityKey, testId, imageIds }) {
+    /** Image bytes for a started attempt only; see image-policy.mjs. */
+    async getImages({ attemptId, imageIds }) {
       const forced = failFor('getImages');
       if (forced) throw forced;
       const nowMs = clock();
-      const decision = authorizeImageFetch({
-        window, config, attempt: findAttempt(identityKey, testId), test: tests[testId], imageIds, nowMs
-      });
+      const attempt = byAttemptId(attemptId);
+      const test = attempt ? tests[attempt.testId] : null;
+      const decision = authorizeImageFetch({ window, config, attempt, test, imageIds, nowMs });
       if (!decision.authorized) return { ok: false, reason: decision.reason };
       return {
         ok: true,
         images: imageIds.map((id) => {
-          const stored = imageStore[testId]?.[id];
+          const stored = imageStore[attempt.testId]?.[id];
           return stored ? { id, mimeType: stored.mimeType, dataBase64: bytesToBase64(stored.bytes) } : { id, missing: true };
         })
       };
     },
 
-    async grantExtension({ identityKey, testId, grantedBy, grantedByRole, reason }) {
+    async grantExtension({ attemptId, grantedBy, grantedByRole, reason }) {
       const nowMs = clock();
-      const attempt = findAttempt(identityKey, testId);
+      const attempt = byAttemptId(attemptId);
       const decision = authorizeExtension({ window, config, attempt, grantedBy, grantedByRole, reason, nowMs });
       if (!decision.granted) return { ok: false, reason: decision.reason };
 
-      const index = attempts.indexOf(attempt);
-      attempts[index] = applyExtension(attempt, decision.record);
+      attempts[attempts.indexOf(attempt)] = applyExtension(attempt, decision.record);
       extensionLog.push(decision.record);
-      return {
-        ok: true,
-        deadlineMs: decision.deadlineAfterMs,
-        effectiveMinutes: decision.effectiveMinutes,
-        record: decision.record
-      };
+      return { ok: true, deadlineMs: decision.deadlineAfterMs, effectiveMinutes: decision.effectiveMinutes, record: decision.record };
     }
   };
 }

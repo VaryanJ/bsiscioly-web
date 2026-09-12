@@ -16,7 +16,7 @@ export const IMAGE_STATES = { PENDING: 'pending', LOADED: 'loaded', FAILED: 'fai
 const defaultToUrl = (bytes, mimeType) => URL.createObjectURL(new Blob([bytes], { type: mimeType }));
 
 export function createImageLoader({
-  endpoint, identityKey, testId, images = [],
+  endpoint, attemptId, images = [],
   toUrl = defaultToUrl, hash = sha256Hex,
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   random = Math.random,
@@ -45,7 +45,8 @@ export function createImageLoader({
   async function loadBatch(ids) {
     for (let attempt = 1; attempt <= settings.maxAttempts; attempt += 1) {
       try {
-        const response = await endpoint.getImages({ identityKey, testId, imageIds: ids });
+        // The server finds the test from the attempt, so a student cannot name another test.
+        const response = await endpoint.getImages({ attemptId, imageIds: ids });
         if (!response.ok) {
           for (const id of ids) set(id, { state: IMAGE_STATES.FAILED, reason: response.reason });
           return;
