@@ -1,0 +1,13 @@
+{
+  "sessionId": "synthetic-session",
+  "timeZone": "America/Phoenix",
+  "date": "2026-09-15",
+  "opensAt": "15:45",
+  "lastNormalStartAt": "16:50",
+  "hardCloseAt": "17:15",
+  "attemptMinutes": 25,
+  "extensionMinutes": 5,
+  "maxTestsPerSession": 2,
+  "maxExtensionsPerAttempt": null,
+  "graceSeconds": 60
+}

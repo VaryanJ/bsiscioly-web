@@ -1,0 +1,59 @@
+{
+  "event": "Synthetic Image Event",
+  "slug": "synthetic-images",
+  "time_limit_minutes": 25,
+  "questions": [
+    {
+      "id": "synthetic-img-q01",
+      "type": "mcq",
+      "prompt": "Look at Image 1. What pattern is shown?",
+      "points": 2,
+      "choices": [
+        "Stripes",
+        "Checkerboard",
+        "Circle",
+        "Blank"
+      ],
+      "image_ids": [
+        "img-01"
+      ]
+    },
+    {
+      "id": "synthetic-img-q02",
+      "type": "symbolic",
+      "prompt": "Look at Image 2. Name the shape in the center.",
+      "points": 2,
+      "image_ids": [
+        "img-02"
+      ]
+    },
+    {
+      "id": "synthetic-img-q03",
+      "type": "numeric",
+      "prompt": "Using Image 1 and Image 2, how many images are on this synthetic test?",
+      "points": 1,
+      "image_ids": [
+        "img-01",
+        "img-02"
+      ]
+    }
+  ],
+  "images": [
+    {
+      "id": "img-01",
+      "label": "Image 1",
+      "width": 480,
+      "height": 320,
+      "bytes": 2597,
+      "sha256": "4e54b447a03c03e8022733e2bd185fff4bff9902bcedd700dac38553883a420e"
+    },
+    {
+      "id": "img-02",
+      "label": "Image 2",
+      "width": 640,
+      "height": 400,
+      "bytes": 3325,
+      "sha256": "acc4be1cb9ba26b61edb6ac338e1d38d4c2dedc12015dbd11549d4219bab4dc3"
+    }
+  ]
+}
