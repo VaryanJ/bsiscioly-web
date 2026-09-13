@@ -100,8 +100,9 @@
     .credit { max-width: 38rem; margin: 0 auto; padding-block: 1rem 1.5rem; border-top: 1px solid var(--sheet-line); color: var(--graphite-soft); font-size: .8125rem; text-align: center; }
     .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; white-space: pre-line; }
     /* Typed-answer questions (Codebusters): the ciphertext's line breaks and letter spacing are
-       part of the puzzle, so keep them, in monospace, and scroll rather than squeeze a wide grid. */
-    .stem.typed { font-family: var(--mono); font-size: 1rem; line-height: 1.75; letter-spacing: .03em; white-space: pre-wrap; overflow-x: auto; }
+       part of the puzzle, so keep them, in monospace. An unbroken run longer than a phone is wide
+       wraps at the edge instead of running off it, where a student might not know to scroll. */
+    .stem.typed { font-family: var(--mono); font-size: 1rem; line-height: 1.75; letter-spacing: .03em; white-space: pre-wrap; overflow-wrap: anywhere; }
     textarea.typed-answer { min-height: 5.5rem; font-family: var(--mono); letter-spacing: .03em; }
 
     /* Answer-sheet bubbles: the page's one bold element. Filled in graphite when marked. */
