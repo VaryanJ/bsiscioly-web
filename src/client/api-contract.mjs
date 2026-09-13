@@ -34,7 +34,9 @@ export const PROTECTED_FIELDS = Object.freeze([
   // Image storage and provenance: a path or crop record can name the source or the answer.
   'file', 'source_pdf', 'source_page', 'crop',
   // Authoring and release records: who wrote or approved a question, and the hash they approved.
-  'origin', 'review_class', 'drafted_by', 'verified_content_sha256', 'owner_delegation'
+  'origin', 'review_class', 'drafted_by', 'verified_content_sha256', 'owner_delegation',
+  // Grading policy.
+  'partial_credit'
 ]);
 
 export function toStudentArtifact(test) {

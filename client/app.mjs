@@ -44,11 +44,11 @@ if (prefilledCode !== null || params.has('t')) {
 
 const REFUSAL_TEXT = {
   'bad-access-code': 'That code doesn’t open a test right now. Check it with your proctor.',
-  'session-not-open': 'This session hasn’t opened yet. Wait for your proctor to start it.',
-  'session-closed': 'This session has closed. Ask your proctor about a makeup time.',
-  'late-start-closed': 'It’s too late in the session to start a new test. Ask your proctor.',
-  'block-already-used': 'You’ve already taken a test in this time block. Each block allows one test.',
-  'session-cap-reached': 'You’ve already started two tests this session, which is the limit.',
+  'session-not-open': 'Testing with that code hasn’t opened yet. Codes change every testing day, so check you have today’s code.',
+  'session-closed': 'Testing with that code has ended. Codes change every testing day, so check you have today’s code.',
+  'late-start-closed': 'It’s too late today to start a new test. Ask your proctor.',
+  'block-already-used': 'You’ve already taken a test in this time block today. Each block allows one test a day.',
+  'session-cap-reached': 'You’ve already started two tests today, which is the daily limit.',
   'incomplete-identity': 'Check your first name, last name, and grade, then try again.',
   'test-not-ready': 'This test isn’t ready yet. Tell your proctor.',
   'resume-email-mismatch': 'This test was already started with this name and a different email. Enter the email you used when you started, or ask your proctor.',
