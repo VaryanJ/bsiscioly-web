@@ -51,6 +51,7 @@ const REFUSAL_TEXT = {
   'session-cap-reached': 'You’ve already started two tests this session, which is the limit.',
   'incomplete-identity': 'Check your first name, last name, and grade, then try again.',
   'test-not-ready': 'This test isn’t ready yet. Tell your proctor.',
+  'resume-email-mismatch': 'This test was already started with this name and a different email. Enter the email you used when you started, or ask your proctor.',
   unreachable: 'Couldn’t reach the test server. Check your Wi-Fi and try again. If it keeps failing, tell your proctor.'
 };
 
@@ -307,7 +308,13 @@ function finish(client, artifact) {
   $('clock').hidden = true;
   $('attempt').hidden = true;
   $('done').hidden = false;
-  if (client.state === ATTEMPT_STATES.COMPLETE) {
+  if (client.state === ATTEMPT_STATES.EXPIRED) {
+    $('done').dataset.tone = 'bad';
+    $('done-title').textContent = 'Time is up for this test';
+    $('done-detail').textContent = 'Time ran out before this page opened, and this device has none of your answers.';
+    $('done-next').textContent = 'If you answered on another device, open the test there so it can send your answers. Otherwise, tell your proctor.';
+    $('done-retry').hidden = true;
+  } else if (client.state === ATTEMPT_STATES.COMPLETE) {
     const receiptMs = client.queue.receipt?.receiptMs;
     $('done').dataset.tone = 'ok';
     $('done-title').textContent = 'Answers submitted';
@@ -346,7 +353,9 @@ function beginAttempt({ result, client, endpoint }) {
   let items;
   const onAnswer = () => refreshProgress(artifact, client, items);
   items = renderQuestions(artifact, client, loader, onAnswer);
+  showSavedAnswers(artifact, client, items);
   onAnswer();
+  if (result.restoredAnswers > 0) showNotice('Welcome back. Your answers on this device are restored, and your timer kept running.');
   loader.onChange((imageId, status) => {
     const image = artifact.images.find((entry) => entry.id === imageId);
     // All figures, not the first: one image can illustrate several questions.
@@ -364,13 +373,13 @@ function beginAttempt({ result, client, endpoint }) {
     $('submit-button').disabled = true;
   };
 
-  const timer = setInterval(async () => {
+  const checkClock = async () => {
     // Heartbeat only while the student is actually on the page, so a reload can tell how long it was closed.
     if (document.visibilityState === 'visible' && document.hasFocus()) client.activity.heartbeat();
     paintAway(client);
     paintClock(client.remainingMs());
     if (client.isExpired() && client.state === ATTEMPT_STATES.RUNNING) {
-      clearInterval(timer);
+      stopClock();
       freeze();
       if ($('review').open) $('review').close();
       $('time-announcer').textContent = 'Time’s up. Your answers are being submitted.';
@@ -378,7 +387,28 @@ function beginAttempt({ result, client, endpoint }) {
       await client.tick();
       finish(client, artifact);
     }
-  }, 500);
+  };
+  // Browsers slow repeating timers in a background tab to as little as once a minute. A single
+  // timer set for the deadline is not slowed that way, and coming back to the page, waking the
+  // device, or reconnecting checks the clock at once.
+  const timer = setInterval(checkClock, 500);
+  const deadlineTimer = setTimeout(checkClock, Math.min(client.remainingMs() + 250, 2 ** 31 - 1));
+  const wake = () => { if (document.visibilityState === 'visible') checkClock(); };
+  const wakeEvents = [[document, 'visibilitychange'], [window, 'focus'], [window, 'pageshow'], [window, 'online']];
+  for (const [target, type] of wakeEvents) target.addEventListener(type, wake);
+  // Closing or reloading mid-test asks first. Answers are saved on this device either way.
+  const warnBeforeLeaving = (event) => {
+    if (client.state === ATTEMPT_STATES.RUNNING || client.state === ATTEMPT_STATES.SUBMITTING) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
+  };
+  window.addEventListener('beforeunload', warnBeforeLeaving);
+  function stopClock() {
+    clearInterval(timer);
+    clearTimeout(deadlineTimer);
+    for (const [target, type] of wakeEvents) target.removeEventListener(type, wake);
+  }
   paintClock(client.remainingMs());
   paintAway(client);
 
@@ -393,7 +423,7 @@ function beginAttempt({ result, client, endpoint }) {
   $('review-cancel').addEventListener('click', () => $('review').close());
   $('review-confirm').addEventListener('click', async () => {
     $('review').close();
-    clearInterval(timer);
+    stopClock();
     freeze();
     showNotice('Submitting your answers…');
     await client.submit();
@@ -405,6 +435,29 @@ function beginAttempt({ result, client, endpoint }) {
     $('done-retry').disabled = false;
     finish(client, artifact);
   });
+  // Back online after sending gave up: try again without waiting for the button.
+  window.addEventListener('online', async () => {
+    if (client.state !== ATTEMPT_STATES.SUBMITTING || client.queue.state !== QUEUE_STATES.EXHAUSTED) return;
+    await client.submit();
+    finish(client, artifact);
+  });
+}
+
+/** Shows answers restored from this device on the rendered questions. */
+function showSavedAnswers(artifact, client, items) {
+  const saved = client.answers;
+  for (const question of artifact.questions) {
+    const value = saved[question.id];
+    if (value === undefined || value === null) continue;
+    const item = items.get(question.id);
+    if (question.type === 'mcq') {
+      const chosen = new Set([].concat(value).map(Number));
+      for (const input of item.querySelectorAll('input.choice-input')) input.checked = chosen.has(Number(input.value));
+    } else {
+      const field = item.querySelector('.answer-input');
+      if (field) field.value = String(value);
+    }
+  }
 }
 
 async function main() {
@@ -476,6 +529,13 @@ async function main() {
     button.textContent = 'Start test';
     if (!result.ok) {
       showEntryError(REFUSAL_TEXT[result.reason] ?? `This test couldn’t start (${result.reason}). Show this screen to your proctor.`);
+      return;
+    }
+    if (client.hasPendingSubmission) {
+      // Submitted on this device before, but not confirmed. Send those answers, not a new set.
+      $('entry').hidden = true;
+      await client.resendPending();
+      finish(client, result.artifact);
       return;
     }
     beginAttempt({ result, client, endpoint });

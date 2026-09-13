@@ -20,7 +20,9 @@ export const ATTEMPT_STATES = {
   FROZEN: 'frozen',
   SUBMITTING: 'submitting',
   COMPLETE: 'complete',
-  REFUSED: 'refused'
+  REFUSED: 'refused',
+  // Time ran out before this page opened, and this page holds none of the attempt's answers.
+  EXPIRED: 'expired'
 };
 
 /** Spread the herd: 30 devices hitting the endpoint on the same second is a self-DoS. */
@@ -32,7 +34,7 @@ export function createAttemptClient({
   clock = () => Date.now(),
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   random = Math.random,
-  newSubmissionId = () => `sub-${Math.random().toString(36).slice(2, 10)}`
+  newSubmissionId = () => `sub-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 14)}`
 }) {
   const activity = createActivityLog({ clock });
   // The client is created as the page loads, so this approximates when the page opened.
@@ -49,12 +51,37 @@ export function createAttemptClient({
   let refusal = null;
   let submissionId = null;
   const answers = {};
+  let answersKey = null;
+  let openedAfterDeadline = false;
+  let pendingPayload = null;
+  let autoSubmitStarted = false;
 
-  const queue = createSubmissionQueue({
+  // One queue per attempt, created at start, so on a shared device one student's unsent
+  // answers are never overwritten by the next student's.
+  const makeQueue = (key) => createSubmissionQueue({
     send: (payload) => endpoint.submitAttempt(payload),
     storage, clock, wait, random,
-    storageKey: 'scioly.pending-submission'
+    storageKey: key
   });
+  let queue = makeQueue('scioly.pending-submission');
+
+  // Answers are kept on this device as they are chosen, so a reload or a crashed browser
+  // resumes with them. Only answers and the attempt id: no name, email, or access code.
+  function saveAnswers() {
+    if (!answersKey) return;
+    try { storage?.setItem(answersKey, JSON.stringify(answers)); } catch { /* the in-memory answers still stand */ }
+  }
+  function loadAnswers() {
+    try {
+      const saved = JSON.parse(storage?.getItem(answersKey) ?? 'null');
+      return saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {};
+    } catch {
+      return {};
+    }
+  }
+  function clearSavedAnswers() {
+    try { storage?.removeItem(answersKey); } catch { /* nothing useful to do */ }
+  }
 
   /** Server time as best we can estimate it locally. */
   const serverNow = () => clock() + clockOffsetMs;
@@ -77,6 +104,19 @@ export function createAttemptClient({
     attemptId = response.attemptId;
     testId = response.testId;
     submissionId = newSubmissionId();
+    queue = makeQueue(`scioly.pending-submission.${attemptId}`);
+    answersKey = `scioly.answers.${attemptId}`;
+    Object.assign(answers, loadAnswers());
+    openedAfterDeadline = isExpired();
+    // Submitted on this device before a reload, but not confirmed: send that exact payload
+    // again. Its submission id is unchanged, so if it did arrive the server treats it as a retry.
+    const pending = queue.loadPersisted();
+    if (pending && pending.attemptId === attemptId) {
+      pendingPayload = pending;
+      submissionId = pending.submissionId;
+      Object.assign(answers, pending.answers ?? {});
+      autoSubmitStarted = true;
+    }
     // Away time is informational and must never stop a student starting. If the server
     // ever omits firstDeliveryMs, measure from now and mark the figure approximate.
     const firstDeliveryMs = Number.isFinite(response.firstDeliveryMs) ? response.firstDeliveryMs : response.serverNowMs;
@@ -88,7 +128,24 @@ export function createAttemptClient({
       reopenedAtMs: pageOpenedAtMs
     });
     state = ATTEMPT_STATES.RUNNING;
-    return { ok: true, decision: response.decision, artifact, deadlineMs, remainingMs: remainingMs() };
+    return {
+      ok: true, decision: response.decision, artifact, deadlineMs, remainingMs: remainingMs(),
+      restoredAnswers: Object.keys(answers).length
+    };
+  }
+
+  /** Sends the unconfirmed submission found at start. Returns null when there was none. */
+  async function resendPending() {
+    if (!pendingPayload) return null;
+    freeze();
+    state = ATTEMPT_STATES.SUBMITTING;
+    const result = await queue.submit(pendingPayload);
+    if (result.state === 'accepted') {
+      state = ATTEMPT_STATES.COMPLETE;
+      pendingPayload = null;
+      clearSavedAnswers();
+    }
+    return result;
   }
 
   function remainingMs() {
@@ -108,6 +165,7 @@ export function createAttemptClient({
       return { accepted: false, state };
     }
     answers[questionId] = value;
+    saveAnswers();
     return { accepted: true, state };
   }
 
@@ -147,6 +205,7 @@ export function createAttemptClient({
     state = ATTEMPT_STATES.SUBMITTING;
     const result = await queue.submit(buildPayload({ auto }));
     state = result.state === 'accepted' ? ATTEMPT_STATES.COMPLETE : ATTEMPT_STATES.SUBMITTING;
+    if (state === ATTEMPT_STATES.COMPLETE) clearSavedAnswers();
     return result;
   }
 
@@ -154,17 +213,25 @@ export function createAttemptClient({
    * Called by the countdown tick. Freezes and auto-submits exactly once at expiry.
    * Idempotent, because a tick can fire more than once around the boundary.
    */
-  let autoSubmitStarted = false;
   async function tick() {
     if (!isExpired() || autoSubmitStarted) return { state, remainingMs: remainingMs() };
     autoSubmitStarted = true;
     freeze();
+    // Reopened after time ran out, on a page with none of this attempt's answers. Sending an
+    // empty set would be accepted first and turn the real answers, still on the device the
+    // student used, into a duplicate.
+    if (openedAfterDeadline && Object.keys(answers).length === 0) {
+      state = ATTEMPT_STATES.EXPIRED;
+      return { state };
+    }
     return submit({ auto: true, jitter: true });
   }
 
   return {
-    start, tick, submit, setAnswer, freeze, remainingMs, isExpired, awayTime,
-    activity, queue,
+    start, tick, submit, resendPending, setAnswer, freeze, remainingMs, isExpired, awayTime,
+    activity,
+    get queue() { return queue; },
+    get hasPendingSubmission() { return pendingPayload !== null; },
     get state() { return state; },
     get artifact() { return artifact; },
     get answers() { return { ...answers }; },

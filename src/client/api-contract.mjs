@@ -120,7 +120,7 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
     /** Test-only inspection of protected state; never exposed over the wire. */
     _state: () => ({ attempts, submissions, extensionLog }),
 
-    async startAttempt({ accessCode, firstName, lastName, grade }) {
+    async startAttempt({ accessCode, firstName, lastName, grade, email }) {
       const forced = failFor('startAttempt');
       if (forced) throw forced;
       const nowMs = clock();
@@ -143,9 +143,15 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
         return { ok: false, decision: result.decision, reason: result.reason };
       }
 
+      // Reopening hands over the attempt id, so it needs the email typed at the start too:
+      // a classmate's name and grade are easy to know (Server.gs, resumeAllowed_).
+      const typedEmail = String(email ?? '').trim().toLowerCase();
       let attempt = result.attempt;
+      if (result.decision === START_DECISIONS.RESUMED && attempt.email && attempt.email !== typedEmail) {
+        return { ok: false, decision: START_DECISIONS.REFUSED, reason: 'resume-email-mismatch' };
+      }
       if (result.decision === START_DECISIONS.AUTHORIZED) {
-        attempt = { ...result.attempt, attemptId: `A${nextAttempt++}` };
+        attempt = { ...result.attempt, attemptId: `A${nextAttempt++}`, email: typedEmail };
         attempts.push(attempt);
       }
 
