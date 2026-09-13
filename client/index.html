@@ -97,7 +97,7 @@
     .q-num { display: inline-grid; place-items: center; min-width: 2rem; height: 2rem; padding: 0 .5rem; border: 1.5px solid var(--sheet); border-radius: 999px; color: var(--sheet); font-size: .9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .question[data-answered="true"] .q-num { background: var(--graphite); border-color: var(--graphite); color: var(--paper); }
     .q-points { font-size: .8125rem; color: var(--graphite-soft); }
-    .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; }
+    .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; white-space: pre-line; }
     /* Typed-answer questions (Codebusters): the ciphertext's line breaks and letter spacing are
        part of the puzzle, so keep them, in monospace, and scroll rather than squeeze a wide grid. */
     .stem.typed { font-family: var(--mono); font-size: 1rem; line-height: 1.75; letter-spacing: .03em; white-space: pre-wrap; overflow-x: auto; }
