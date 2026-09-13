@@ -239,7 +239,7 @@ function renderQuestions(artifact, client, loader, onAnswer) {
       h('div', { className: 'q-head' },
         h('span', { className: 'q-num', textContent: String(index + 1), 'aria-hidden': 'true' }),
         h('span', { className: 'q-points', textContent: points })),
-      h('p', { className: 'stem', id: stemId, textContent: question.prompt }));
+      h('p', { className: question.type === 'symbolic' ? 'stem typed' : 'stem', id: stemId, textContent: question.prompt }));
 
     for (const imageId of question.image_ids ?? []) {
       const image = artifact.images.find((entry) => entry.id === imageId);
@@ -266,8 +266,9 @@ function renderQuestions(artifact, client, loader, onAnswer) {
       });
       item.append(group);
     } else {
-      const field = question.type === 'frq' ? h('textarea', { rows: 5 }) : h('input', { type: 'text' });
-      field.className = 'answer-input';
+      // A decoded message can run to several lines, so typed answers get a box, not a one-line field.
+      const field = question.type === 'frq' || question.type === 'symbolic' ? h('textarea', { rows: question.type === 'frq' ? 5 : 3 }) : h('input', { type: 'text' });
+      field.className = question.type === 'symbolic' ? 'answer-input typed-answer' : 'answer-input';
       field.placeholder = 'Your answer';
       field.setAttribute('aria-labelledby', stemId);
       field.setAttribute('autocomplete', 'off');

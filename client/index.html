@@ -26,6 +26,7 @@
       --red-tint: #fdeaea;
       --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
       --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     }
     * { box-sizing: border-box; }
     [hidden] { display: none !important; }
@@ -97,6 +98,10 @@
     .question[data-answered="true"] .q-num { background: var(--graphite); border-color: var(--graphite); color: var(--paper); }
     .q-points { font-size: .8125rem; color: var(--graphite-soft); }
     .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; }
+    /* Typed-answer questions (Codebusters): the ciphertext's line breaks and letter spacing are
+       part of the puzzle, so keep them, in monospace, and scroll rather than squeeze a wide grid. */
+    .stem.typed { font-family: var(--mono); font-size: 1rem; line-height: 1.75; letter-spacing: .03em; white-space: pre-wrap; overflow-x: auto; }
+    textarea.typed-answer { min-height: 5.5rem; font-family: var(--mono); letter-spacing: .03em; }
 
     /* Answer-sheet bubbles: the page's one bold element. Filled in graphite when marked. */
     .choices { display: grid; gap: .375rem; }
