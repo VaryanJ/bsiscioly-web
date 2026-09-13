@@ -25,8 +25,12 @@ export const ATTEMPT_STATES = {
   EXPIRED: 'expired'
 };
 
-/** Spread the herd: 30 devices hitting the endpoint on the same second is a self-DoS. */
-export const AUTO_SUBMIT_JITTER_MS = 10_000;
+/**
+ * Spread the herd: a whole room hitting the endpoint in the same second is a self-DoS, and Apps
+ * Script runs at most 30 requests at once. Answers are frozen at the deadline, so the wait costs
+ * nothing; the server's 60-second grace keeps it from counting as late.
+ */
+export const AUTO_SUBMIT_JITTER_MS = 20_000;
 
 export function createAttemptClient({
   endpoint,

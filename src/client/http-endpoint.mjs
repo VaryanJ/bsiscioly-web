@@ -12,7 +12,9 @@
  *   is what fetch does by default; the script has already run by then.
  */
 
-const DEFAULT_TIMEOUT_MS = 20_000;
+// Apps Script can take well over 10 seconds to answer when a whole room is using it at once.
+// Giving up too early only adds a retry to the load.
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 function failure(message, props = {}) {
   return Object.assign(new Error(message), props);
