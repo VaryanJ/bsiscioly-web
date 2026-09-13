@@ -97,6 +97,7 @@
     .q-num { display: inline-grid; place-items: center; min-width: 2rem; height: 2rem; padding: 0 .5rem; border: 1.5px solid var(--sheet); border-radius: 999px; color: var(--sheet); font-size: .9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
     .question[data-answered="true"] .q-num { background: var(--graphite); border-color: var(--graphite); color: var(--paper); }
     .q-points { font-size: .8125rem; color: var(--graphite-soft); }
+    .credit { max-width: 38rem; margin: 0 auto; padding-block: 1rem 1.5rem; border-top: 1px solid var(--sheet-line); color: var(--graphite-soft); font-size: .8125rem; text-align: center; }
     .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; white-space: pre-line; }
     /* Typed-answer questions (Codebusters): the ciphertext's line breaks and letter spacing are
        part of the puzzle, so keep them, in monospace, and scroll rather than squeeze a wide grid. */
@@ -239,6 +240,8 @@
       <button type="button" id="done-retry" class="primary" hidden>Try sending again</button>
     </section>
   </main>
+
+  <footer class="credit">Built by Varyan J – BASIS Chandler Sci Oly</footer>
 
   <dialog id="review" aria-labelledby="review-title">
     <h2 id="review-title">Submit your answers?</h2>
