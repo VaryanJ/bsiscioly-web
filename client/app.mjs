@@ -522,7 +522,7 @@ async function main() {
         lastName: identity.lastName,
         grade: identity.grade,
         email: email.email
-      });
+      }, { onRetry: () => { button.textContent = 'Server busy, trying again…'; } });
     } catch (error) {
       result = { ok: false, reason: 'unreachable' };
     }

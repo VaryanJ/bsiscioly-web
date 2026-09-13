@@ -11,7 +11,7 @@
  */
 
 import { createActivityLog } from './activity-log.mjs';
-import { createSubmissionQueue } from './submission-queue.mjs';
+import { createSubmissionQueue, isRetryable, backoffDelayMs } from './submission-queue.mjs';
 import { computeAwayTime } from './away-time.mjs';
 
 export const ATTEMPT_STATES = {
@@ -31,6 +31,13 @@ export const ATTEMPT_STATES = {
  * nothing; the server's 60-second grace keeps it from counting as late.
  */
 export const AUTO_SUBMIT_JITTER_MS = 20_000;
+
+/**
+ * A start refused because the server is busy is tried again, spread out at random, instead of
+ * telling the student it failed: Apps Script turns away requests beyond 30 at once, which a room
+ * pressing Start together can exceed for a few seconds. At most about 35 seconds in all.
+ */
+export const START_RETRY = Object.freeze({ maxAttempts: 6, baseDelayMs: 1_500, maxDelayMs: 12_000 });
 
 export function createAttemptClient({
   endpoint,
@@ -94,8 +101,19 @@ export function createAttemptClient({
    * Sends only what the student typed. The server decides which test the code opens,
    * which roster row the name is, and when the attempt started.
    */
-  async function start({ accessCode, firstName, lastName, grade, email }) {
-    const response = await endpoint.startAttempt({ accessCode, firstName, lastName, grade, email });
+  async function start({ accessCode, firstName, lastName, grade, email }, { onRetry } = {}) {
+    let response;
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        // Safe to repeat: a start that did reach the server is resumed, not duplicated.
+        response = await endpoint.startAttempt({ accessCode, firstName, lastName, grade, email });
+        break;
+      } catch (error) {
+        if (!isRetryable(error) || attempt >= START_RETRY.maxAttempts) throw error;
+        onRetry?.(attempt);
+        await wait(backoffDelayMs(attempt, START_RETRY, random));
+      }
+    }
     if (!response.ok) {
       state = ATTEMPT_STATES.REFUSED;
       refusal = response.reason;
