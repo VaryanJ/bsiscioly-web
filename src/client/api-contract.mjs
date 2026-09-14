@@ -88,7 +88,7 @@ export function assertNoProtectedFields(value, path = 'artifact') {
  * real server ever return different fields.
  *
  *   start   { accessCode, firstName, lastName, grade, email }
- *        -> { ok: true, decision, attemptId, testId, event, serverNowMs, firstDeliveryMs, deadlineMs, artifact, savedAnswers }
+ *        -> { ok: true, decision, attemptId, testId, event, serverNowMs, firstDeliveryMs, deadlineMs, artifact, savedAnswers, fullScreen }
  *        |  { ok: false, decision: 'refused', reason }
  *   submit  { attemptId, submissionId, answers, activity, clientSubmittedAtMs, clientServerNowMs, auto }
  *        -> { ok: true, outcome, receiptId, late, receiptMs }
@@ -96,7 +96,8 @@ export function assertNoProtectedFields(value, path = 'artifact') {
  *        -> { ok: true, images } | { ok: false, reason }
  */
 // savedAnswers: on a resume, the answers the server saved while the test ran (null when it keeps none).
-export const START_RESPONSE_FIELDS = Object.freeze(['ok', 'decision', 'attemptId', 'testId', 'event', 'serverNowMs', 'firstDeliveryMs', 'deadlineMs', 'artifact', 'savedAnswers']);
+// fullScreen: whether the page holds this test in full screen (false where students may use online tools).
+export const START_RESPONSE_FIELDS = Object.freeze(['ok', 'decision', 'attemptId', 'testId', 'event', 'serverNowMs', 'firstDeliveryMs', 'deadlineMs', 'artifact', 'savedAnswers', 'fullScreen']);
 export const SUBMIT_RESPONSE_FIELDS = Object.freeze(['ok', 'outcome', 'receiptId', 'late', 'receiptMs']);
 
 /**
@@ -173,7 +174,8 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
         firstDeliveryMs: result.firstDeliveryMs,
         deadlineMs: result.deadlineMs,
         artifact,
-        savedAnswers: result.decision === START_DECISIONS.RESUMED ? (drafts.get(attempt.attemptId)?.answers ?? null) : null
+        savedAnswers: result.decision === START_DECISIONS.RESUMED ? (drafts.get(attempt.attemptId)?.answers ?? null) : null,
+        fullScreen: tests[testId].full_screen !== false
       };
     },
 

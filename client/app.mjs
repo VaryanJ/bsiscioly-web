@@ -434,7 +434,7 @@ function beginAttempt({ result, client, endpoint }) {
   $('clock-event').focus();
 
   const paintClock = createClockPainter(totalMs);
-  const releaseFullscreen = guardFullscreen(client);
+  const releaseFullscreen = result.fullScreen ? guardFullscreen(client) : () => {};
   const freeze = () => {
     $('answers-fieldset').disabled = true;
     $('submit-button').disabled = true;
@@ -607,6 +607,8 @@ async function main() {
       showEntryError(REFUSAL_TEXT[result.reason] ?? `This test couldn’t start (${result.reason}). Show this screen to your proctor.`);
       return;
     }
+    // A test where students may use online tools, like Engineering CAD, leaves full screen.
+    if (!result.fullScreen && document.fullscreenElement) document.exitFullscreen().catch(() => {});
     if (client.hasPendingSubmission) {
       // Submitted on this device before, but not confirmed. Send those answers, not a new set.
       $('entry').hidden = true;

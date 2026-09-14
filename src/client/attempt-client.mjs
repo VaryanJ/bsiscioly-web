@@ -171,6 +171,7 @@ export function createAttemptClient({
     return {
       ok: true, decision: response.decision, artifact, deadlineMs, remainingMs: remainingMs(),
       attemptMs: deadlineMs - firstDeliveryMs,
+      fullScreen: response.fullScreen !== false,
       restoredAnswers: Object.keys(answers).length
     };
   }
