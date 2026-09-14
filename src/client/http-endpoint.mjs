@@ -71,6 +71,11 @@ export function createHttpEndpoint({ url, fetchImpl = globalThis.fetch?.bind(glo
       throw failure(reason, { retryable: reason === 'server-error' });
     },
 
+    /** Answers so far, while the test runs. A refusal is an answer; no reply at all throws. */
+    async saveDraft(payload) {
+      return call('save', 'save', payload);
+    },
+
     async getImages(request) {
       const body = await call('images', 'images', request);
       if (serverError(body)) throw failure('The test server hit an error loading images', { retryable: true });

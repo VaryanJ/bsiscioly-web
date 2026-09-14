@@ -8,7 +8,8 @@
  */
 
 // `closed`/`reopened` bracket the time a resumed attempt's page was not open at all.
-export const ACTIVITY_EVENTS = Object.freeze(['visible', 'hidden', 'focus', 'blur', 'closed', 'reopened']);
+// `fullscreen-exit`/`fullscreen-enter` bracket time out of full screen, on a device that has it.
+export const ACTIVITY_EVENTS = Object.freeze(['visible', 'hidden', 'focus', 'blur', 'closed', 'reopened', 'fullscreen-exit', 'fullscreen-enter']);
 
 const HEARTBEAT_EVERY_MS = 5_000;
 const CLOSED_GAP_MIN_MS = 2_000;

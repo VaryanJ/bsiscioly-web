@@ -39,12 +39,20 @@ export const AUTO_SUBMIT_JITTER_MS = 20_000;
  */
 export const START_RETRY = Object.freeze({ maxAttempts: 6, baseDelayMs: 1_500, maxDelayMs: 12_000 });
 
+/**
+ * Answers are also saved to the server while the test runs, so a computer that dies loses at most a few
+ * seconds of work: a few seconds after a change, and no more often than every 15 seconds per student.
+ */
+export const DRAFT_SAVE = Object.freeze({ debounceMs: 3_000, minIntervalMs: 15_000 });
+
 export function createAttemptClient({
   endpoint,
   storage,
   clock = () => Date.now(),
   wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   random = Math.random,
+  schedule = (fn, ms) => setTimeout(fn, ms),
+  cancel = (id) => clearTimeout(id),
   newSubmissionId = () => `sub-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2, 14)}`
 }) {
   const activity = createActivityLog({ clock });
@@ -66,6 +74,13 @@ export function createAttemptClient({
   let openedAfterDeadline = false;
   let pendingPayload = null;
   let autoSubmitStarted = false;
+  // Saving answers to the server as the student works.
+  let draftTimer = null;
+  let draftDirty = false;
+  let draftSending = false;
+  let draftsOff = typeof endpoint.saveDraft !== 'function';
+  let lastDraftSentClientMs = -Infinity;
+  let lastSavedServerMs = null;
 
   // One queue per attempt, created at start, so on a shared device one student's unsent
   // answers are never overwritten by the next student's.
@@ -128,7 +143,10 @@ export function createAttemptClient({
     submissionId = newSubmissionId();
     queue = makeQueue(`scioly.pending-submission.${attemptId}`);
     answersKey = `scioly.answers.${attemptId}`;
-    Object.assign(answers, loadAnswers());
+    // Answers the server saved come first, and this device's own copy over them, question by question:
+    // a reopen on another computer gets the saved work back, and the same computer keeps its newest.
+    const fromServer = response.savedAnswers && typeof response.savedAnswers === 'object' && !Array.isArray(response.savedAnswers) ? response.savedAnswers : {};
+    Object.assign(answers, fromServer, loadAnswers());
     openedAfterDeadline = isExpired();
     // Submitted on this device before a reload, but not confirmed: send that exact payload
     // again. Its submission id is unchanged, so if it did arrive the server treats it as a retry.
@@ -189,10 +207,41 @@ export function createAttemptClient({
     }
     answers[questionId] = value;
     saveAnswers();
+    queueDraft();
     return { accepted: true, state };
   }
 
+  function queueDraft() {
+    if (draftsOff) return;
+    draftDirty = true;
+    if (draftTimer !== null || draftSending) return;
+    const waitMs = Math.max(DRAFT_SAVE.debounceMs, lastDraftSentClientMs + DRAFT_SAVE.minIntervalMs - clock());
+    draftTimer = schedule(() => { draftTimer = null; sendDraft(); }, waitMs);
+  }
+
+  /** Sends the answers now if any changed since the last save: when time is up soon, or the page is being hidden. */
+  async function sendDraft() {
+    if (draftTimer !== null) { cancel(draftTimer); draftTimer = null; }
+    if (draftsOff || draftSending || !draftDirty || state !== ATTEMPT_STATES.RUNNING || isExpired()) return;
+    draftDirty = false;
+    draftSending = true;
+    lastDraftSentClientMs = clock();
+    try {
+      // The server keeps only a save newer than the one it has, by server time, so a reload never goes backwards.
+      const reply = await endpoint.saveDraft({ attemptId, answers: { ...answers }, seq: Math.round(serverNow()) });
+      if (reply && reply.ok) lastSavedServerMs = reply.savedMs ?? serverNow();
+      // A server that keeps no saves, an attempt already over, or answers it will never take: stop trying.
+      else draftsOff = true;
+    } catch {
+      draftDirty = true; // no reply: try again at the next interval
+    } finally {
+      draftSending = false;
+      if (draftDirty && !draftsOff) queueDraft();
+    }
+  }
+
   function freeze() {
+    if (draftTimer !== null) { cancel(draftTimer); draftTimer = null; }
     if (state === ATTEMPT_STATES.RUNNING) {
       state = ATTEMPT_STATES.FROZEN;
       endedAtClientMs = Math.min(clock(), deadlineMs - clockOffsetMs);
@@ -251,7 +300,7 @@ export function createAttemptClient({
   }
 
   return {
-    start, tick, submit, resendPending, setAnswer, freeze, remainingMs, isExpired, awayTime,
+    start, tick, submit, resendPending, setAnswer, freeze, remainingMs, isExpired, awayTime, saveDraftNow: sendDraft,
     activity,
     get queue() { return queue; },
     get hasPendingSubmission() { return pendingPayload !== null; },
@@ -262,6 +311,8 @@ export function createAttemptClient({
     get attemptId() { return attemptId; },
     get testId() { return testId; },
     get refusal() { return refusal; },
-    get clockOffsetMs() { return clockOffsetMs; }
+    get clockOffsetMs() { return clockOffsetMs; },
+    /** When the server last kept this attempt's answers, in server time, or null. */
+    get lastSavedMs() { return lastSavedServerMs; }
   };
 }

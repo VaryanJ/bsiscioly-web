@@ -60,6 +60,7 @@
     .name-row .field { margin-bottom: .5rem; }
     .name-hint { margin: 0 0 1.25rem; }
     .clock-away { max-width: 38rem; margin: 0 auto; padding: 0 16px .375rem; font-size: .8125rem; font-weight: 600; }
+    .clock-saved { max-width: 38rem; margin: 0 auto; padding: 0 16px .375rem; font-size: .75rem; opacity: .8; }
     .code-input { font-size: 1.25rem; letter-spacing: .14em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
     textarea { min-height: 8rem; line-height: 1.5; resize: vertical; }
     .preview { margin: .375rem 0 0; font-size: .875rem; color: var(--sheet); }
@@ -70,6 +71,9 @@
     .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 3rem; padding: .75rem 1.5rem; border-radius: 999px; font-weight: 600; }
     .primary { border: 0; background: var(--graphite); color: var(--paper); }
     .primary:disabled { background: #9aa0a6; cursor: not-allowed; }
+    .shield { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: var(--paper); }
+    .shield[hidden] { display: none; }
+    .shield-card { max-width: 30rem; text-align: center; }
     .secondary { border: 1.5px solid var(--sheet-line); background: var(--paper); color: var(--graphite); }
     .text-button { padding: 0; border: 0; background: none; color: var(--sheet); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
     #start-button, #submit-button { width: 100%; }
@@ -171,6 +175,7 @@
       <p class="clock-time" role="timer" aria-label="Time remaining"><span id="timer">25:00</span></p>
     </div>
     <p class="clock-away" id="clock-away" hidden></p>
+    <p class="clock-saved" id="clock-saved" hidden></p>
     <div class="clock-track" aria-hidden="true"><div class="clock-fill" id="clock-fill"></div></div>
   </header>
   <p class="sr-only" id="time-announcer" aria-live="assertive"></p>
@@ -178,7 +183,7 @@
   <main>
     <section id="entry" aria-labelledby="entry-title">
       <h1 id="entry-title">Start your tryout test</h1>
-      <p class="lede">Your 25 minutes start when you tap Start test. Refreshing or switching devices won’t restart the clock. Time you spend away from this page is recorded for your proctor.</p>
+      <p class="lede">Your time starts when you tap Start test, and the test opens in full screen. Refreshing or switching devices won’t restart the clock. Time you spend away from the test, or out of full screen, is recorded for your proctor.</p>
       <form id="entry-form" novalidate>
         <div class="field">
           <label for="access-code">Access code</label>
@@ -241,6 +246,14 @@
       <button type="button" id="done-retry" class="primary" hidden>Try sending again</button>
     </section>
   </main>
+
+  <div id="fullscreen-shield" class="shield" role="dialog" aria-modal="true" aria-labelledby="shield-title" hidden>
+    <div class="shield-card">
+      <h2 id="shield-title">Return to full screen</h2>
+      <p>The test is shown only in full screen. Your time is still running, and time out of full screen is recorded for your proctor.</p>
+      <button type="button" id="fullscreen-return" class="primary">Return to full screen</button>
+    </div>
+  </div>
 
   <footer class="credit">Built by Varyan J – BASIS Chandler Sci Oly</footer>
 

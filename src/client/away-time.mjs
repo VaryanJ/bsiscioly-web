@@ -5,7 +5,8 @@
  * says tab logging is not load-bearing with a proctor in the room, and a phone can report
  * a blur for reasons that have nothing to do with cheating. Nothing may score it.
  *
- * "Away" means any of: the page was hidden, the window lost focus, or the page was closed.
+ * "Away" means any of: the page was hidden, the window lost focus, the page was closed, or the test left
+ * full screen (the questions are covered until it returns).
  * Overlapping causes are counted once, not added together.
  */
 
@@ -16,10 +17,11 @@ export function computeAwayTime(events, { startMs, endMs }) {
   let hidden = false;
   let blurred = false;
   let closed = false;
+  let windowed = false;
   let awaySince = null;
   let awayMs = 0;
   let awayCount = 0;
-  const isAway = () => hidden || blurred || closed;
+  const isAway = () => hidden || blurred || closed || windowed;
 
   const settle = (atMs) => {
     const from = Math.max(awaySince, startMs);
@@ -42,8 +44,10 @@ export function computeAwayTime(events, { startMs, endMs }) {
       case 'blur': blurred = true; break;
       case 'focus': blurred = false; break;
       case 'closed': closed = true; break;
+      case 'fullscreen-exit': windowed = true; break;
+      case 'fullscreen-enter': windowed = false; break;
       // A freshly opened page is visible and focused, whatever the old page last reported.
-      case 'reopened': closed = false; hidden = false; blurred = false; break;
+      case 'reopened': closed = false; hidden = false; blurred = false; windowed = false; break;
       default: continue;
     }
     const nowAway = isAway();

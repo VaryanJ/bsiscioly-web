@@ -142,11 +142,72 @@ function updateIdentityPreview() {
 const timesText = (count) => `${count} ${count === 1 ? 'time' : 'times'}`;
 
 /** Informational only: shown so students know it is recorded, never used to score. */
+/** A quiet line saying the answers are safe on the server too, so a student whose computer dies can reopen the test anywhere. */
+function paintSaved(client) {
+  const line = $('clock-saved');
+  line.hidden = client.lastSavedMs === null;
+  if (!line.hidden) {
+    const at = new Date(client.lastSavedMs - client.clockOffsetMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    line.textContent = `Answers saved at ${at}`;
+  }
+}
+
 function paintAway(client) {
   const away = client.awayTime();
   const line = $('clock-away');
   line.hidden = away.awayMs < 1000;
   if (!line.hidden) line.textContent = `Away from this test: ${formatAwayDuration(away.awayMs)} (${timesText(away.awayCount)})`;
+}
+
+// --- full screen --------------------------------------------------------------
+
+const fullscreenAvailable = () => Boolean(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+
+/** Resolves true once in full screen, false where the device or browser will not allow it. */
+function enterFullscreen() {
+  if (!fullscreenAvailable()) return Promise.resolve(false);
+  if (document.fullscreenElement) return Promise.resolve(true);
+  return document.documentElement.requestFullscreen({ navigationUI: 'hide' }).then(() => true, () => false);
+}
+
+/**
+ * Keeps the test in full screen where the device has it: leaving covers the questions until the student
+ * returns, and the time out counts as time away. A phone without full screen, or a browser that refuses
+ * it, simply shows the test. Nothing can truly lock a browser; this makes stepping out visible and pointless.
+ */
+function guardFullscreen(client) {
+  if (!fullscreenAvailable()) return () => {};
+  const shield = $('fullscreen-shield');
+  let refused = false;
+  const paint = () => {
+    const covered = client.state === ATTEMPT_STATES.RUNNING && !refused && !document.fullscreenElement;
+    if (covered && shield.hidden) {
+      for (const id of ['review', 'image-viewer']) if ($(id).open) $(id).close();
+    }
+    shield.hidden = !covered;
+    $('attempt').inert = covered;
+    if (covered) $('fullscreen-return').focus();
+  };
+  const onChange = () => {
+    if (client.state === ATTEMPT_STATES.RUNNING) client.activity.record(document.fullscreenElement ? 'fullscreen-enter' : 'fullscreen-exit');
+    paint();
+  };
+  const onReturn = async () => {
+    if (!(await enterFullscreen())) {
+      refused = true;
+      showNotice('Full screen isn’t available on this device. Keep working in this window.', 'warn');
+      paint();
+    }
+  };
+  document.addEventListener('fullscreenchange', onChange);
+  $('fullscreen-return').addEventListener('click', onReturn);
+  paint();
+  return () => {
+    document.removeEventListener('fullscreenchange', onChange);
+    $('fullscreen-return').removeEventListener('click', onReturn);
+    shield.hidden = true;
+    $('attempt').inert = false;
+  };
 }
 
 // --- attempt ----------------------------------------------------------------
@@ -308,6 +369,7 @@ function refreshProgress(artifact, client, items) {
 }
 
 function finish(client, artifact) {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   $('clock').hidden = true;
   $('attempt').hidden = true;
   $('done').hidden = false;
@@ -372,6 +434,7 @@ function beginAttempt({ result, client, endpoint }) {
   $('clock-event').focus();
 
   const paintClock = createClockPainter(totalMs);
+  const releaseFullscreen = guardFullscreen(client);
   const freeze = () => {
     $('answers-fieldset').disabled = true;
     $('submit-button').disabled = true;
@@ -381,6 +444,7 @@ function beginAttempt({ result, client, endpoint }) {
     // Heartbeat only while the student is actually on the page, so a reload can tell how long it was closed.
     if (document.visibilityState === 'visible' && document.hasFocus()) client.activity.heartbeat();
     paintAway(client);
+    paintSaved(client);
     paintClock(client.remainingMs());
     if (client.isExpired() && client.state === ATTEMPT_STATES.RUNNING) {
       stopClock();
@@ -397,8 +461,11 @@ function beginAttempt({ result, client, endpoint }) {
   // device, or reconnecting checks the clock at once.
   const timer = setInterval(checkClock, 500);
   const deadlineTimer = setTimeout(checkClock, Math.min(client.remainingMs() + 250, 2 ** 31 - 1));
-  const wake = () => { if (document.visibilityState === 'visible') checkClock(); };
+  // Leaving the page (another tab, a closed lid) saves the answers to the server at once.
+  const wake = () => { if (document.visibilityState === 'visible') checkClock(); else client.saveDraftNow(); };
+  const leave = () => client.saveDraftNow();
   const wakeEvents = [[document, 'visibilitychange'], [window, 'focus'], [window, 'pageshow'], [window, 'online']];
+  window.addEventListener('pagehide', leave);
   for (const [target, type] of wakeEvents) target.addEventListener(type, wake);
   // Closing or reloading mid-test asks first. Answers are saved on this device either way.
   const warnBeforeLeaving = (event) => {
@@ -409,9 +476,11 @@ function beginAttempt({ result, client, endpoint }) {
   };
   window.addEventListener('beforeunload', warnBeforeLeaving);
   function stopClock() {
+    releaseFullscreen();
     clearInterval(timer);
     clearTimeout(deadlineTimer);
     for (const [target, type] of wakeEvents) target.removeEventListener(type, wake);
+    window.removeEventListener('pagehide', leave);
   }
   paintClock(client.remainingMs());
   paintAway(client);
@@ -513,6 +582,8 @@ async function main() {
       return;
     }
 
+    // Asked for while the tap still counts as the student's own action, which browsers require.
+    enterFullscreen();
     const button = $('start-button');
     button.disabled = true;
     button.textContent = 'Starting…';
@@ -532,6 +603,7 @@ async function main() {
     button.disabled = false;
     button.textContent = 'Start test';
     if (!result.ok) {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       showEntryError(REFUSAL_TEXT[result.reason] ?? `This test couldn’t start (${result.reason}). Show this screen to your proctor.`);
       return;
     }

@@ -7,7 +7,7 @@
  */
 
 import { resolveSessionWindow } from '../policy/session-window.mjs';
-import { authorizeStart, authorizeSubmission, START_DECISIONS, SUBMISSION_OUTCOMES } from '../policy/attempt-policy.mjs';
+import { authorizeStart, authorizeSubmission, computeDeadlineMs, grantedExtensionMinutes, START_DECISIONS, SUBMISSION_OUTCOMES } from '../policy/attempt-policy.mjs';
 import { authorizeExtension, applyExtension } from '../policy/extension.mjs';
 import { authorizeImageFetch } from '../policy/image-policy.mjs';
 import { bytesToBase64 } from './bytes.mjs';
@@ -88,14 +88,15 @@ export function assertNoProtectedFields(value, path = 'artifact') {
  * real server ever return different fields.
  *
  *   start   { accessCode, firstName, lastName, grade, email }
- *        -> { ok: true, decision, attemptId, testId, event, serverNowMs, firstDeliveryMs, deadlineMs, artifact }
+ *        -> { ok: true, decision, attemptId, testId, event, serverNowMs, firstDeliveryMs, deadlineMs, artifact, savedAnswers }
  *        |  { ok: false, decision: 'refused', reason }
  *   submit  { attemptId, submissionId, answers, activity, clientSubmittedAtMs, clientServerNowMs, auto }
  *        -> { ok: true, outcome, receiptId, late, receiptMs }
  *   images  { attemptId, imageIds }
  *        -> { ok: true, images } | { ok: false, reason }
  */
-export const START_RESPONSE_FIELDS = Object.freeze(['ok', 'decision', 'attemptId', 'testId', 'event', 'serverNowMs', 'firstDeliveryMs', 'deadlineMs', 'artifact']);
+// savedAnswers: on a resume, the answers the server saved while the test ran (null when it keeps none).
+export const START_RESPONSE_FIELDS = Object.freeze(['ok', 'decision', 'attemptId', 'testId', 'event', 'serverNowMs', 'firstDeliveryMs', 'deadlineMs', 'artifact', 'savedAnswers']);
 export const SUBMIT_RESPONSE_FIELDS = Object.freeze(['ok', 'outcome', 'receiptId', 'late', 'receiptMs']);
 
 /**
@@ -109,6 +110,7 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
   const window = resolveSessionWindow(config);
   const attempts = [];
   const submissions = [];
+  const drafts = new Map();
   const extensionLog = [];
   let nextAttempt = 1;
   let nextReceipt = 1;
@@ -122,7 +124,7 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
   return {
     window,
     /** Test-only inspection of protected state; never exposed over the wire. */
-    _state: () => ({ attempts, submissions, extensionLog }),
+    _state: () => ({ attempts, submissions, drafts, extensionLog }),
 
     async startAttempt({ accessCode, firstName, lastName, grade, email }) {
       const forced = failFor('startAttempt');
@@ -170,8 +172,30 @@ export function createMockEndpoint({ config, tests, accessCodes, blocks = {}, cl
         serverNowMs: nowMs,
         firstDeliveryMs: result.firstDeliveryMs,
         deadlineMs: result.deadlineMs,
-        artifact
+        artifact,
+        savedAnswers: result.decision === START_DECISIONS.RESUMED ? (drafts.get(attempt.attemptId)?.answers ?? null) : null
       };
+    },
+
+    /** Answers saved while the test runs: only a running attempt, only until its deadline, newest wins. */
+    async saveDraft({ attemptId, answers, seq }) {
+      const forced = failFor('saveDraft');
+      if (forced) throw forced;
+      const attempt = byAttemptId(attemptId);
+      if (!attempt) return { ok: false, outcome: 'not-saved', reason: 'unknown-attempt' };
+      const nowMs = clock();
+      const deadlineMs = computeDeadlineMs({
+        firstDeliveryMs: attempt.firstDeliveryMs, attemptMinutes: config.attemptMinutes,
+        extensionMinutesTotal: grantedExtensionMinutes(attempt), hardCloseMs: window.hardCloseMs
+      });
+      const submitted = submissions.some((s) => s.attemptId === attemptId && s.outcome === SUBMISSION_OUTCOMES.ACCEPTED);
+      if (submitted || nowMs > deadlineMs + (config.graceSeconds ?? 0) * 1000) {
+        return { ok: false, outcome: 'not-saved', reason: 'attempt-ended' };
+      }
+      const kept = drafts.get(attemptId);
+      if (kept && kept.seq >= seq) return { ok: true, outcome: 'stale', savedMs: nowMs };
+      drafts.set(attemptId, { answers: structuredClone(answers), seq, savedMs: nowMs });
+      return { ok: true, outcome: 'saved', savedMs: nowMs };
     },
 
     async submitAttempt(payload) {
