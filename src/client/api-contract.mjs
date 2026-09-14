@@ -36,7 +36,7 @@ export const PROTECTED_FIELDS = Object.freeze([
   // Authoring and release records: who wrote or approved a question, and the hash they approved.
   'origin', 'review_class', 'drafted_by', 'verified_content_sha256', 'owner_delegation',
   // Grading policy.
-  'partial_credit'
+  'partial_credit', 'letter_errors'
 ]);
 
 export function toStudentArtifact(test) {
