@@ -49,6 +49,7 @@ const REFUSAL_TEXT = {
   'late-start-closed': 'It’s too late today to start a new test. Ask your proctor.',
   'block-already-used': 'You’ve already taken a test in this time block today. Each block allows one test a day.',
   'session-cap-reached': 'You’ve already started two tests today, which is the daily limit.',
+  'another-test-in-progress': 'You already have another test open. Finish and submit that test first, then start this one.',
   'not-on-roster': 'That name and grade aren’t on the tryout roster. Type your name the way the club has it, with your current grade, or ask your proctor.',
   'incomplete-identity': 'Check your first name, last name, and grade, then try again.',
   'test-not-ready': 'This test isn’t ready yet. Tell your proctor.',
@@ -344,7 +345,8 @@ function finish(client, artifact) {
 
 function beginAttempt({ result, client, endpoint }) {
   const artifact = result.artifact;
-  const totalMs = (artifact.time_limit_minutes ?? 25) * 60_000;
+  // The server sets each attempt's length, so the bar follows it rather than the test file's nominal time.
+  const totalMs = result.attemptMs > 0 ? result.attemptMs : (artifact.time_limit_minutes ?? 25) * 60_000;
   $('entry').hidden = true;
   $('attempt').hidden = false;
   $('clock').hidden = false;

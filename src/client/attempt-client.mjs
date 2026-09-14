@@ -152,6 +152,7 @@ export function createAttemptClient({
     state = ATTEMPT_STATES.RUNNING;
     return {
       ok: true, decision: response.decision, artifact, deadlineMs, remainingMs: remainingMs(),
+      attemptMs: deadlineMs - firstDeliveryMs,
       restoredAnswers: Object.keys(answers).length
     };
   }
