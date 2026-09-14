@@ -49,6 +49,7 @@ const REFUSAL_TEXT = {
   'late-start-closed': 'It’s too late today to start a new test. Ask your proctor.',
   'block-already-used': 'You’ve already taken a test in this time block today. Each block allows one test a day.',
   'session-cap-reached': 'You’ve already started two tests today, which is the daily limit.',
+  'not-on-roster': 'That name and grade aren’t on the tryout roster. Type your name the way the club has it, with your current grade, or ask your proctor.',
   'incomplete-identity': 'Check your first name, last name, and grade, then try again.',
   'test-not-ready': 'This test isn’t ready yet. Tell your proctor.',
   'resume-email-mismatch': 'This test was already started with this name and a different email. Enter the email you used when you started, or ask your proctor.',
