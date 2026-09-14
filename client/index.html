@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Access codes must not leak through the Referer header to anything this page links to. -->
+  <meta name="referrer" content="no-referrer">
+  <!-- No third-party resources: every script and style is served from this origin. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://bsiscioly-tryouts.vj-app.workers.dev https://script.google.com https://script.googleusercontent.com; img-src 'self' data: blob:; base-uri 'none'; form-action 'none'">
+  <meta name="color-scheme" content="light">
+  <title>Tryout test</title>
+  <style>
+    /* Answer sheet and test booklet: paper, graphite pencil, drop-out green print. */
+    :root {
+      color-scheme: light;
+      --paper: #ffffff;
+      --graphite: #2b2f33;
+      --graphite-soft: #596068;
+      --sheet: #2f6f52;
+      --sheet-line: #6f8f7e;
+      --sheet-tint: #e8f2ec;
+      --amber-ink: #7a4a00;
+      --amber-tint: #fff1d1;
+      --red-ink: #a11b1b;
+      --red-tint: #fdeaea;
+      --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    /* scroll-padding keeps a focused field from landing under the sticky clock (WCAG 2.4.11). */
+    html { font-size: 106.25%; -webkit-text-size-adjust: 100%; scroll-padding-top: 4.5rem; }
+    body { margin: 0; padding-inline: 16px; background: var(--paper); color: var(--graphite); font: 1rem/1.5 var(--sans); }
+    main { max-width: 38rem; margin: 0 auto; padding-block: 2rem 5rem; }
+    :focus-visible { outline: 3px solid var(--graphite); outline-offset: 2px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+    h1, h2 { font-family: var(--serif); font-weight: 600; }
+    h1 { font-size: 1.75rem; line-height: 1.2; margin: 0 0 .5rem; }
+    h2 { font-size: 1.3rem; line-height: 1.25; margin: 0 0 .5rem; }
+    .lede { margin: 0 0 1.75rem; font-family: var(--serif); font-size: 1.0625rem; line-height: 1.6; color: var(--graphite-soft); }
+    .hint { margin: .375rem 0 0; font-size: .875rem; color: var(--graphite-soft); }
+
+    .demo { margin: 0 -16px; padding: .5rem 16px; background: var(--sheet-tint); color: var(--sheet); font-size: .8125rem; text-align: center; }
+
+    .field { margin: 0 0 1.25rem; }
+    .field > label { display: block; margin-bottom: .375rem; font-size: .9375rem; font-weight: 600; }
+    input[type=text], input[type=email], textarea {
+      width: 100%; min-height: 3rem; padding: .7rem .8rem; font: inherit; color: var(--graphite);
+      background: var(--paper); border: 1.5px solid var(--sheet-line); border-radius: 8px;
+    }
+    input:focus-visible, textarea:focus-visible { outline: 2px solid var(--graphite); outline-offset: 2px; border-color: var(--graphite); }
+    ::placeholder { color: var(--graphite-soft); opacity: 1; }
+    [aria-invalid=true] { border-color: var(--red-ink); }
+    select { width: 100%; min-height: 3rem; padding: .7rem .8rem; font: inherit; color: var(--graphite); background: var(--paper); border: 1.5px solid var(--sheet-line); border-radius: 8px; }
+    select:focus-visible { outline: 2px solid var(--graphite); outline-offset: 2px; border-color: var(--graphite); }
+    .name-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); column-gap: .75rem; }
+    .name-row .field { margin-bottom: .5rem; }
+    .name-hint { margin: 0 0 1.25rem; }
+    .clock-away { max-width: 38rem; margin: 0 auto; padding: 0 16px .375rem; font-size: .8125rem; font-weight: 600; }
+    .clock-saved { max-width: 38rem; margin: 0 auto; padding: 0 16px .375rem; font-size: .75rem; opacity: .8; }
+    .code-input { font-size: 1.25rem; letter-spacing: .14em; text-transform: uppercase; font-variant-numeric: tabular-nums; }
+    textarea { min-height: 8rem; line-height: 1.5; resize: vertical; }
+    .preview { margin: .375rem 0 0; font-size: .875rem; color: var(--sheet); }
+    .preview strong { color: var(--graphite); }
+    .field-error { margin: .375rem 0 0; font-size: .875rem; font-weight: 600; color: var(--red-ink); }
+
+    button { font: inherit; cursor: pointer; }
+    .primary, .secondary { display: inline-flex; align-items: center; justify-content: center; min-height: 3rem; padding: .75rem 1.5rem; border-radius: 999px; font-weight: 600; }
+    .primary { border: 0; background: var(--graphite); color: var(--paper); }
+    .primary:disabled { background: #9aa0a6; cursor: not-allowed; }
+    .shield { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 16px; background: var(--paper); }
+    .shield[hidden] { display: none; }
+    .shield-card { max-width: 30rem; text-align: center; }
+    .secondary { border: 1.5px solid var(--sheet-line); background: var(--paper); color: var(--graphite); }
+    .text-button { padding: 0; border: 0; background: none; color: var(--sheet); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+    #start-button, #submit-button { width: 100%; }
+    #start-button { margin-top: .5rem; }
+
+    .notice { margin: 1rem 0; padding: .75rem 1rem; border-radius: 8px; background: var(--sheet-tint); }
+    .notice-warn { background: var(--amber-tint); color: var(--amber-ink); }
+    .notice-bad { background: var(--red-tint); color: var(--red-ink); }
+
+    /* The proctor's clock: always visible, quiet until it matters. */
+    .clock { position: sticky; top: 0; z-index: 10; margin: 0 -16px; background: var(--paper); }
+    .clock-inner { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; max-width: 38rem; margin: 0 auto; padding: .625rem 16px .5rem; }
+    .clock-event { min-width: 0; margin: 0; overflow: hidden; font-size: .9375rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .clock-time { margin: 0; font-size: 1.625rem; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+    .clock-track { height: 4px; background: var(--sheet-tint); }
+    .clock-fill { width: 100%; height: 100%; background: var(--graphite); transition: width .5s linear; }
+    .clock[data-level=warn] { background: var(--amber-tint); color: var(--amber-ink); }
+    .clock[data-level=warn] .clock-fill { background: var(--amber-ink); }
+    .clock[data-level=critical] { background: var(--red-tint); color: var(--red-ink); }
+    .clock[data-level=critical] .clock-fill { background: var(--red-ink); }
+
+    .questions { margin: 1.25rem 0 0; padding: 0; list-style: none; }
+    .question { padding-block: 1.25rem 1.5rem; }
+    .q-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .625rem; }
+    .q-num { display: inline-grid; place-items: center; min-width: 2rem; height: 2rem; padding: 0 .5rem; border: 1.5px solid var(--sheet); border-radius: 999px; color: var(--sheet); font-size: .9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .question[data-answered="true"] .q-num { background: var(--graphite); border-color: var(--graphite); color: var(--paper); }
+    .q-points { font-size: .8125rem; color: var(--graphite-soft); }
+    .credit { max-width: 38rem; margin: 0 auto; padding-block: 1rem 1.5rem; border-top: 1px solid var(--sheet-line); color: var(--graphite-soft); font-size: .8125rem; text-align: center; }
+    .stem { margin: 0 0 1rem; font-family: var(--serif); font-size: 1.125rem; line-height: 1.6; white-space: pre-line; }
+    /* Typed-answer questions (Codebusters): the ciphertext's line breaks and letter spacing are
+       part of the puzzle, so keep them, in monospace. An unbroken run longer than a phone is wide
+       wraps at the edge instead of running off it, where a student might not know to scroll. */
+    .stem.typed { font-family: var(--mono); font-size: 1rem; line-height: 1.75; letter-spacing: .03em; white-space: pre-wrap; overflow-wrap: anywhere; }
+    textarea.typed-answer { min-height: 5.5rem; font-family: var(--mono); letter-spacing: .03em; }
+
+    /* Answer-sheet bubbles: the page's one bold element. Filled in graphite when marked. */
+    .choices { display: grid; gap: .375rem; }
+    .choice { position: relative; display: flex; align-items: center; gap: .875rem; min-height: 3rem; padding: .5rem .75rem .5rem .5rem; border-radius: 12px; }
+    .choice:hover { background: var(--sheet-tint); }
+    .choice:has(.choice-input:checked) { background: var(--sheet-tint); }
+    .choice-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+    .bubble { flex: none; display: grid; place-items: center; width: 2.125rem; height: 2.125rem; border: 2px solid var(--sheet); border-radius: 50%; color: var(--sheet); font-size: .875rem; font-weight: 700; }
+    .bubble.square { border-radius: 6px; }
+    .choice-input:checked + .bubble { background: var(--graphite); border-color: var(--graphite); color: var(--paper); }
+    .choice-input:focus-visible + .bubble { outline: 3px solid var(--graphite); outline-offset: 3px; }
+    .choice-text { font-family: var(--serif); font-size: 1.0625rem; line-height: 1.45; }
+    fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+    fieldset:disabled { opacity: .7; }
+    fieldset:disabled .choice-input { cursor: not-allowed; }
+
+    .figure { margin: 0 0 1rem; }
+    .figure-frame { display: block; width: 100%; padding: 0; overflow: hidden; background: var(--paper); border: 1px solid #c9d8cf; border-radius: 8px; cursor: zoom-in; }
+    .figure-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .figure:not([data-state=loaded]) img { visibility: hidden; }
+    .figure:not([data-state=loaded]) .figure-frame {
+      cursor: default;
+      background-image: linear-gradient(var(--sheet-tint) 1px, transparent 1px), linear-gradient(90deg, var(--sheet-tint) 1px, transparent 1px);
+      background-size: 1rem 1rem;
+    }
+    figcaption { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem 1rem; margin-top: .375rem; font-size: .875rem; color: var(--graphite-soft); }
+    .figure-label { font-weight: 600; color: var(--graphite); }
+    .figure[data-state=failed] .figure-state { color: var(--red-ink); }
+
+    .finish { margin-top: .75rem; padding-top: 1.25rem; border-top: 2px solid var(--graphite); }
+    .progress { margin: 0; font-weight: 600; }
+    .progress-missing { margin: .25rem 0 1rem; font-size: .9375rem; color: var(--graphite-soft); }
+
+    #done { padding-top: 2.5rem; }
+    #done h1 { font-size: 2rem; }
+    #done[data-tone=bad] h1 { color: var(--red-ink); }
+    .done-mark { position: relative; width: 3.25rem; height: 3.25rem; margin-bottom: 1.25rem; border-radius: 50%; background: var(--graphite); }
+    .done-mark::after { content: ""; position: absolute; left: 50%; top: 45%; width: .8rem; height: 1.45rem; border: solid var(--paper); border-width: 0 .28rem .28rem 0; transform: translate(-50%, -50%) rotate(45deg); }
+    #done[data-tone=bad] .done-mark { background: var(--red-ink); }
+    #done[data-tone=bad] .done-mark::after { content: "!"; top: 50%; width: auto; height: auto; border: 0; color: var(--paper); font: 700 1.75rem/1 var(--sans); transform: translate(-50%, -50%); }
+
+    dialog#review { width: min(28rem, calc(100vw - 32px)); padding: 1.5rem; border: 0; border-radius: 16px; color: var(--graphite); background: var(--paper); }
+    dialog#review::backdrop { background: rgba(43, 47, 51, .55); }
+    .dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .75rem; margin-top: 1.25rem; }
+    /* Equal widths side by side when they fit; each full width when they wrap on a phone. */
+    .dialog-actions > button { flex: 1 1 10rem; }
+
+    dialog#image-viewer { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; padding: 0; border: 0; background: var(--graphite); color: var(--paper); }
+    .viewer-bar { position: sticky; top: 0; display: flex; align-items: center; gap: .5rem; padding: .5rem 16px; background: var(--graphite); }
+    .viewer-bar h2 { flex: 1; margin: 0; font-size: 1.0625rem; }
+    .viewer-bar button { min-width: 2.75rem; min-height: 2.75rem; padding: 0 .75rem; border: 1.5px solid rgba(255, 255, 255, .55); border-radius: 999px; background: transparent; color: var(--paper); font-weight: 600; }
+    .viewer-scroll { height: calc(100dvh - 3.75rem); overflow: auto; background: #f1f4f2; touch-action: pan-x pan-y pinch-zoom; }
+    .viewer-scroll img { display: block; width: 100%; max-width: none; margin: 0 auto; }
+
+    @media (min-width: 40rem) { main { padding-block: 3rem 6rem; } }
+    @media (prefers-reduced-motion: reduce) { .clock-fill { transition: none; } }
+  </style>
+</head>
+<body>
+  <p class="demo" id="demo-notice" hidden>Demo with made-up questions. Nothing you enter is saved or graded.</p>
+
+  <header class="clock" id="clock" data-level="normal" hidden>
+    <div class="clock-inner">
+      <p class="clock-event" id="clock-event" tabindex="-1"></p>
+      <p class="clock-time" role="timer" aria-label="Time remaining"><span id="timer">25:00</span></p>
+    </div>
+    <p class="clock-away" id="clock-away" hidden></p>
+    <p class="clock-saved" id="clock-saved" hidden></p>
+    <div class="clock-track" aria-hidden="true"><div class="clock-fill" id="clock-fill"></div></div>
+  </header>
+  <p class="sr-only" id="time-announcer" aria-live="assertive"></p>
+
+  <main>
+    <section id="entry" aria-labelledby="entry-title">
+      <h1 id="entry-title">Start your tryout test</h1>
+      <p class="lede">Your time starts when you tap Start test, and most tests open in full screen. Refreshing or switching devices won’t restart the clock. Time you spend away from the test, or out of full screen, is recorded for your proctor.</p>
+      <form id="entry-form" novalidate>
+        <div class="field">
+          <label for="access-code">Access code</label>
+          <input id="access-code" class="code-input" name="accessCode" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" aria-describedby="access-code-hint access-code-error">
+          <p class="hint" id="access-code-hint">From your proctor. Each test has its own code.</p>
+          <p class="field-error" id="access-code-error" hidden></p>
+        </div>
+        <div class="name-row">
+          <div class="field">
+            <label for="first-name">First name</label>
+            <input id="first-name" name="firstName" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" aria-describedby="identity-hint first-name-error">
+            <p class="field-error" id="first-name-error" hidden></p>
+          </div>
+          <div class="field">
+            <label for="last-name">Last name</label>
+            <input id="last-name" name="lastName" type="text" autocomplete="off" autocorrect="off" autocapitalize="words" spellcheck="false" aria-describedby="identity-hint last-name-error">
+            <p class="field-error" id="last-name-error" hidden></p>
+          </div>
+        </div>
+        <p class="hint name-hint" id="identity-hint">Use your name as it appears on the tryout roster.</p>
+        <div class="field">
+          <label for="grade">Grade</label>
+          <select id="grade" name="grade" aria-describedby="identity-preview grade-error">
+            <option value="">Choose your grade</option>
+            <option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option>
+          </select>
+          <p class="preview" id="identity-preview" hidden>You’ll be entered as <strong id="identity-display"></strong></p>
+          <p class="field-error" id="grade-error" hidden></p>
+        </div>
+        <div class="field">
+          <label for="email">Personal email</label>
+          <input id="email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="off" spellcheck="false" aria-describedby="email-error">
+          <p class="field-error" id="email-error" hidden></p>
+        </div>
+        <p id="entry-error" class="notice notice-bad" role="alert" hidden></p>
+        <button type="submit" id="start-button" class="primary">Start test</button>
+      </form>
+    </section>
+
+    <section id="attempt" hidden>
+      <p id="attempt-status" class="notice" role="status" hidden></p>
+      <form id="answers" novalidate>
+        <fieldset id="answers-fieldset">
+          <ol id="questions" class="questions"></ol>
+        </fieldset>
+        <div class="finish">
+          <p class="progress" id="progress"></p>
+          <p class="progress-missing" id="progress-missing"></p>
+          <button type="submit" id="submit-button" class="primary">Review and submit</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="done" aria-labelledby="done-title" hidden>
+      <div class="done-mark" aria-hidden="true"></div>
+      <h1 id="done-title" tabindex="-1">Answers submitted</h1>
+      <p class="lede" id="done-detail"></p>
+      <p class="hint" id="done-away"></p>
+      <p class="hint" id="done-next"></p>
+      <button type="button" id="done-retry" class="primary" hidden>Try sending again</button>
+    </section>
+  </main>
+
+  <div id="fullscreen-shield" class="shield" role="dialog" aria-modal="true" aria-labelledby="shield-title" hidden>
+    <div class="shield-card">
+      <h2 id="shield-title">Return to full screen</h2>
+      <p>The test is shown only in full screen. Your time is still running, and time out of full screen is recorded for your proctor.</p>
+      <button type="button" id="fullscreen-return" class="primary">Return to full screen</button>
+    </div>
+  </div>
+
+  <footer class="credit">Built by Varyan J – BASIS Chandler Sci Oly</footer>
+
+  <dialog id="review" aria-labelledby="review-title">
+    <h2 id="review-title">Submit your answers?</h2>
+    <p id="review-summary"></p>
+    <p class="hint">You can’t change answers after submitting.</p>
+    <div class="dialog-actions">
+      <button type="button" id="review-cancel" class="secondary">Keep working</button>
+      <button type="button" id="review-confirm" class="primary">Submit answers</button>
+    </div>
+  </dialog>
+
+  <dialog id="image-viewer" aria-labelledby="viewer-title">
+    <div class="viewer-bar">
+      <h2 id="viewer-title">Image</h2>
+      <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+      <button type="button" id="zoom-reset">Fit</button>
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="viewer-close">Close</button>
+    </div>
+    <div class="viewer-scroll"><img id="viewer-image" alt=""></div>
+  </dialog>
+  <script type="module" src="./app.mjs"></script>
+</body>
+</html>
