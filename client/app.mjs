@@ -47,8 +47,6 @@ const REFUSAL_TEXT = {
   'session-not-open': 'Testing with that code hasn’t opened yet. Codes change every testing day, so check you have today’s code.',
   'session-closed': 'Testing with that code has ended. Codes change every testing day, so check you have today’s code.',
   'late-start-closed': 'It’s too late today to start a new test. Ask your proctor.',
-  'block-already-used': 'You’ve already taken a test in this time block today. Each block allows one test a day.',
-  'session-cap-reached': 'You’ve already started two tests today, which is the daily limit.',
   'another-test-in-progress': 'You already have another test open. Finish and submit that test first, then start this one.',
   'not-on-roster': 'That name and grade aren’t on the tryout roster. Type your name the way the club has it, with your current grade, or ask your proctor.',
   'incomplete-identity': 'Check your first name, last name, and grade, then try again.',

@@ -22,9 +22,7 @@ export const REFUSAL = {
   BAD_ACCESS_CODE: 'bad-access-code',
   SESSION_NOT_OPEN: 'session-not-open',
   SESSION_CLOSED: 'session-closed',
-  LATE_START_CLOSED: 'late-start-closed',
-  BLOCK_ALREADY_USED: 'block-already-used',
-  SESSION_CAP_REACHED: 'session-cap-reached'
+  LATE_START_CLOSED: 'late-start-closed'
 };
 
 /**
@@ -41,10 +39,6 @@ export function computeDeadlineMs({ firstDeliveryMs, attemptMinutes, extensionMi
 
 export function grantedExtensionMinutes(attempt) {
   return (attempt.extensions ?? []).reduce((sum, extension) => sum + extension.minutes, 0);
-}
-
-function attemptsForIdentity(priorAttempts, identityKey) {
-  return priorAttempts.filter((attempt) => attempt.identityKey === identityKey);
 }
 
 /**
@@ -76,7 +70,7 @@ export function authorizeStart({ window, config, request, priorAttempts = [], no
   const refuse = (reason) => ({ decision: START_DECISIONS.REFUSED, reason, serverNowMs: nowMs });
 
   // The access code gates a test, not a person. It is checked first so that an invalid
-  // code never reveals whether a name, block, or cap would also have refused.
+  // code never reveals whether a name would also have refused.
   if (!accessCodeValid) return refuse(REFUSAL.BAD_ACCESS_CODE);
 
   const phase = sessionPhase(window, nowMs);
@@ -84,10 +78,7 @@ export function authorizeStart({ window, config, request, priorAttempts = [], no
   if (phase === SESSION_PHASES.CLOSED) return refuse(REFUSAL.SESSION_CLOSED);
   if (phase === SESSION_PHASES.LATE_START_CLOSED) return refuse(REFUSAL.LATE_START_CLOSED);
 
-  const mine = attemptsForIdentity(priorAttempts, identityKey);
-  if (mine.some((attempt) => attempt.blockId === blockId)) return refuse(REFUSAL.BLOCK_ALREADY_USED);
-  if (mine.length >= config.maxTestsPerSession) return refuse(REFUSAL.SESSION_CAP_REACHED);
-
+  // No daily or per-block limit (owner decisions, 2026-09-14); each test is still taken once.
   return {
     decision: START_DECISIONS.AUTHORIZED,
     firstDeliveryMs: nowMs,
